@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.22;
 
+import "@openzeppelin/contracts/access/Ownable.sol";
+
 contract ProposalVote is Ownable {
 
+    /// @dev Struct to hold proposal information.
     struct Proposal {
         address initiator;              // The initiator of the proposal
         bool activate;                  // Whether the proposal is active
@@ -11,8 +14,13 @@ contract ProposalVote is Ownable {
         uint256 proposalId;             // The ID of the proposal
     }
 
-    constructor() Ownable() {
-        _proposalId = 0;
+    /// @dev Struct to hold option ID and vote count.
+    struct OptionVote {
+        uint8 optionId;                 // option unique id
+        uint8 voteCount;                // number of voter
+    }
+
+    constructor() Ownable(msg.sender) {
     }
 
     // The minimum pledge quantity required to create a proposal and vote.
@@ -78,29 +86,37 @@ contract ProposalVote is Ownable {
         return proposals[proposalId];
     }
 
-    /// @dev Get proposal options choose.
-    /// @return The options of the proposal, the key is the option ID, the value is the count.
-    function getProposalOptionsChoose(uint256 proposalId) public view returns(uint8[]) {
-        return proposalVoteOptionsCountMap[proposalId];
+
+    function getProposalOptionsChoose(uint256 proposalId) public view returns(OptionVote[] memory options) {
+        uint8[] memory optionsArray = proposals[proposalId].options;
+        uint256 optionCount = optionsArray.length;
+        options = new OptionVote[](optionCount);
+        for (uint256 i = 0; i < optionCount; i++) {
+            options[i] = OptionVote({
+                optionId: optionsArray[i],
+                voteCount: proposalVoteOptionsCountMap[proposalId][optionsArray[i]]
+            });
+        }
+        return options;
     }
 
     /// @dev Check if the proposal is initiated or owner by the caller.
     modifier isInitiator(uint256 proposalId) {
-        require(proposals[proposalId].initiator == msg.sender || owner == msg.sender);
+         require(proposals[proposalId].initiator == msg.sender || owner() == msg.sender, "Not the initiator or owner");
         _;
     }
 
     /// @dev Check if the balance is enough to vote.
     modifier checkBalance() {
         // At least MINIMUM_PLEDGE_QUANTITY eth is required to vote and not zero address.
-        require(msg.sender != address(0) && stakingMap[msg.sender] >= MINIMUM_PLEDGE_QUANTITY);
+        require(msg.sender != address(0) && stakingMap[msg.sender] >= MINIMUM_PLEDGE_QUANTITY, "You have not enought stake eth!");
         _;
     }
 
     /// @dev Vote for a proposal.
     /// @param proposalId The ID of the proposal.
     /// @param options The options of the proposal.
-    function vote(uint256 proposalId, uint8[] options) public checkBalance {
+    function vote(uint256 proposalId, uint8[] calldata options) public checkBalance {
         require(options.length > 0
         && proposals[proposalId].activate
         && !proposalVoteMapCheck[proposalId][msg.sender]);
@@ -135,11 +151,11 @@ contract ProposalVote is Ownable {
     /// @dev Create a new proposal. At least MINIMUM_PLEDGE_QUANTITY eth is required to create a proposal.
     /// @param proposalDescription The description of the proposal.
     /// @param options The options of the proposal.
-    function createProposal(string memory proposalDescription, uint8[] options) external checkBalance {
+    function createProposal(string memory proposalDescription, uint8[] calldata options) external checkBalance {
         require(options.length > 1
         && options.length <= OPTIONS_LENGTH
         && bytes(proposalDescription).length > 0
-        && bytes(proposalDescription).length < 1000);
+        && bytes(proposalDescription).length < 1000, "NOOOOOOOO");
         uint256 proposalId = _getProposalId();
         proposals[proposalId] = Proposal(
             msg.sender,
@@ -150,12 +166,10 @@ contract ProposalVote is Ownable {
         emit CreateProposal(msg.sender, proposalId);
     }
 
-    /// @dev At least stake MINIMUM_PLEDGE_QUANTITY eth need to be pledge.
-    /// @return True if success.
     function stake() public payable {
         require(msg.value > 0 && msg.sender != address(0));
         uint256 amount = stakingMap[msg.sender];
-        require(amount + msg.value >= MINIMUM_PLEDGE_QUANTITY);
+        require(amount + msg.value >= MINIMUM_PLEDGE_QUANTITY, "At least stake 10 ETH!");
         stakingMap[msg.sender] += msg.value;
     }
 
@@ -165,7 +179,7 @@ contract ProposalVote is Ownable {
     }
 
     /// @dev Get the proposal ID.
-    function _getProposalId() private view returns (uint256) {
+    function _getProposalId() private returns (uint256) {
         return ++_proposalId;
     }
 }
