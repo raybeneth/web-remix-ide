@@ -12,6 +12,7 @@ contract ProposalVote is Ownable {
         string proposalDescription;     // The description of the proposal
         uint8[] options;                // The options ID of the proposal
         uint256 proposalId;             // The ID of the proposal
+        bool exists;
     }
 
     /// @dev Struct to hold option ID and vote count.
@@ -76,6 +77,7 @@ contract ProposalVote is Ownable {
     /// @dev Close a proposal.
     /// @param proposalId The ID of the proposal.
     function closeProposal(uint256 proposalId) public isInitiator(proposalId) {
+        require(proposals[proposalId].exists, "NoFound proposal!");
         proposals[proposalId].activate = false;
         delete vote2ActivateStatusProposalMap[msg.sender];
         emit CloseProposal(msg.sender, proposalId);
@@ -117,30 +119,14 @@ contract ProposalVote is Ownable {
     /// @param proposalId The ID of the proposal.
     /// @param options The options of the proposal.
     function vote(uint256 proposalId, uint8[] calldata options) public checkBalance {
-        require(options.length > 0
-        && proposals[proposalId].activate
-        && !proposalVoteMapCheck[proposalId][msg.sender]);
+        require(options.length > 0, "Please choose your option[s]!");
+        require(proposals[proposalId].activate, "Proposal is not activate!");
+        require(!proposalVoteMapCheck[proposalId][msg.sender], "You are voted!");
         // Add the options to the mapping.
         proposalVoteOptionsMap[proposalId][msg.sender] = options;
         proposalVoteMapCheck[proposalId][msg.sender] = true;
-        assembly {
-            mstore(0, proposalId)
-            mstore(32, proposalVoteMap.slot)
-            let voterSlot := keccak256(0, 64)
-            let voterLength := sload(voterSlot)
-            let voterStorageSlot := add(keccak256(voterSlot, 32), voterLength)
-            sstore(voterStorageSlot, caller())
-            sstore(voterSlot, add(voterLength, 1))
-        }
-        assembly {
-            mstore(0, caller())
-            mstore(32, vote2ActivateStatusProposalMap.slot)
-            let proposalSlot := keccak256(0, 64)
-            let proposalLength := sload(proposalSlot)
-            let proposalStorageSlot := add(keccak256(proposalSlot, 32), proposalLength)
-            sstore(proposalStorageSlot, proposalId)
-            sstore(proposalSlot, add(proposalLength, 1))
-        }
+        proposalVoteMap[proposalId].push(msg.sender);
+        vote2ActivateStatusProposalMap[msg.sender].push(proposalId);
         for (uint8 i = 0; i < options.length; i++) {
             uint8 option = options[i];
             proposalVoteOptionsCountMap[proposalId][option] += 1;
@@ -162,7 +148,8 @@ contract ProposalVote is Ownable {
             true,
             proposalDescription,
             options,
-            proposalId);
+            proposalId,
+            true);
         emit CreateProposal(msg.sender, proposalId);
     }
 
